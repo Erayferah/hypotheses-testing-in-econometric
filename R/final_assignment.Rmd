@@ -1,0 +1,177 @@
+---
+title: "final-assignment"
+author: "Eray Ferah"
+date: "28 05 2022"
+output:
+word_document: default
+html_document:
+df_print: paged
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r technical details for the analysis, echo = FALSE}
+library(ggplot2)
+library(lmtest)
+library(scales)
+library(lubridate)
+library(stargazer)
+library(readxl)
+
+setwd("C:\\Users\\erayf\\Desktop\\DataScience\\Repo\\hypotheses-testing-in-econometric\\data")
+
+# Import data
+df_dis <- read_excel("disney.xlsx")
+df_dis <- as.data.frame(df_dis)
+
+######define date
+df_dis$Date <- as.Date(paste(df_dis$date, 1), "%Ym%m %d")
+
+```
+
+```{r Calculate returns, echo = FALSE}
+##### Calculate returns #####
+
+df_dis$Return <- 0
+
+for(i in c(2:nrow(df_dis))){
+  df_dis$Return[i] <- (df_dis$disney[i]-df_dis$disney[i-1])/df_dis$disney[i-1]*100
+}
+
+```
+
+```{r ,echo = FALSE}
+
+df_dis$Excess_Returns <- df_dis$Return - df_dis$rf
+
+##### Regress the basic model (no robust se) #####
+# library(lmtest)
+Model_1_dis <- lm(Excess_Returns ~
+                mktrf
+              , data=df_dis
+              , na.action=na.exclude)
+coeftest(Model_1_dis)
+stargazer(Model_1_dis, type="text")
+
+##### Save residuals #####
+df_dis$e_1 <- residuals(Model_1_dis)
+
+#################################################4.5.
+
+resid1 <- df_dis$e_1
+h1 <- hist(resid1)
+h1
+
+```
+
+I have built CAPM Model with Disney stock excess return and mktrf.
+
+Below I will be doing hypothesis testing for intercept and independent variable (t-tests)
+
+## t-tests;
+
+## (1) intercept coefficient = 0.
+
+## (2) mktrf coefficient = 1.
+
+```{r t-tests}
+library(car)
+library(lmtest)
+library(dplyr)
+library(strucchange)
+
+##### Project 1: Hypothesis testing #####
+# show t test for a=0 b=0 c=0
+summary(Model_1_dis)$coefficients
+
+# Test a=0 with t test
+Model_1_dis$coefficients[1]/sqrt(diag(vcov(Model_1_dis)))[1]
+linearHypothesis(Model_1_dis, c("(Intercept)=0"))
+
+# Test b=1 with t test
+linearHypothesis(Model_1_dis, c("mktrf=1"))
+```
+
+Null hypothesis, that intercept coefficient is 0, is failed to be rejected (p-value 0.2469).
+
+Null hypothesis, that mktrf coefficient is 1, is rejected at 5 % significance level (p-value 0.02859)
+
+## F Test that intercept coefficient is 0 and indep variable coefficient is 1.
+
+```{r f-test}
+# Test a=0 and b=1 with f test
+linearHypothesis(Model_1_dis, c("(Intercept)=0", "mktrf=1"))
+
+```
+
+We reject the null hypothesis that intercept coefficient is 0 and mktrf's coefficient is 1 at 5 % significance level.
+(p-value 0.02808).
+
+# Diagnostic Tests
+
+## Linearity test
+
+```{r linearity test}
+# Test for linearity of the Model using the RAMSEY reset test
+resettest(Model_1_dis, power=2:4, type="fitted")
+
+```
+
+According to the RESET test (null hypothesis is that model is not suffering omitted variable problem), model is linear (p-value 0.4784).
+
+## Autocorrelation test
+
+```{r autocorrelation test}
+
+dwtest(Model_1_dis)
+
+```
+
+According to Durbin-Watson test, the null hypothesis that autocorrelation of residuals is 0 and p-value is 0.932.
+So we fail to reject null hypothesis and say that there is no auto correlation among residuals.
+
+## Heteroscedasticity test
+
+```{r Heteroscedasticity test}
+
+bptest(Model_1_dis, ~ I(mktrf^2), data = df_dis)
+
+```
+
+According to white-test, which null hypothesis homoscedasticity is present, our model is homoscedastic.
+p-value 0.2154
+
+## Normality test
+
+```{r Normality test}
+library(tseries)
+
+jarque.bera.test(resid1)
+
+```
+
+According to jarque bera test, the null hypothesis normality, residuals are normally distributed.
+p-value 2.2e-16
+
+## Multicollinearity test
+
+Since CAPM model is simple linear regression (1 independent variable), there is no need for multicollinearity test.
+However, if there has been more than 1 independent variable we should check a correlation matrix amon independent variables.
+
+## Endogeneity test
+
+Hausman test should be used to check if there is endogenity (correlation between error term and regressors).
+
+```{r Endogeneity test}
+library(plm)
+
+model_dis <- Excess_Returns ~ mktrf
+
+#phtest(plm(model_dis, data = df_dis, model = "within"), data = df_dis)
+
+```
